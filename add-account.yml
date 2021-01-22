@@ -1,0 +1,62 @@
+# Uses cyberark.pas Collection and the cyberark.pas.cyberark_authentication
+## and cyberark.pas.cyberark_account modules
+- hosts: localhost
+
+- tasks:
+  - name: Logon to CyberArk Vault using PAS Web Services SDK
+    cyberark.pas.cyberark_authentication:
+      api_base_url: "{{ lookup('env', 'CYBERARK_API_URL') }}"
+      username: "{{ lookup('env', 'CYBERARK_API_USERNAME') }}"
+      password: "{{ lookup('env', 'CYBERARK_API_PASSWORD') }}"
+      use_shared_logon_authentication: no
+    register: cyberark_session
+  
+  - name: Set Fact with Randomized Password for New User to Add
+      set_fact:
+        user_password: "{{ lookup('password', '/dev/null length=15 chars=ascii_letters') }}"
+      no_log: yes
+
+  - name: Creating an Account using the PAS WebServices SDK
+      cyberark.pas.cyberark_account:
+        logging_level: DEBUG
+        identified_by: "address,username"
+        safe: "Test"
+        address: "cyberark.local"
+        username: "administrator-x"
+        platform_id: WinServerLocal
+        secret: "{{ user_password }}"
+        platform_account_properties:
+            LogonDomain: "cyberark"
+            OwnerName: "ansible_user"
+        secret_management:
+            automatic_management_enabled: true
+        state: present
+        cyberark_session: "{{ cyberark_session }}"
+      register: cyberark_action
+
+  - debug:
+      msg: "{{ cyberark_action }}"
+
+  - name: Rotate credential via reconcile
+    cyberark.pas.cyberark_account:
+      identified_by: "address,username"
+      safe: "Test"
+      address: "cyberark.local"
+      username: "administrator-x"
+      platform_id: WinServerLocal
+      platform_account_properties:
+          LogonDomain: "cyberark"
+      secret_management:
+          management_action: "reconcile"
+          automatic_management_enabled: true
+      state: present
+      cyberark_session: "{{ cyberark_session }}"
+    register: reconcile_account
+
+  - debug:
+      msg: "{{ reconcile_account }}"
+
+  - name: Logoff from CyberArk Vault
+    cyberark.pas.cyberark_authentication:
+      cyberark_session: "{{ cyberark_session }}"
+      state: absent
